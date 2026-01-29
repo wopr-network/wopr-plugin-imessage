@@ -1,0 +1,37 @@
+{
+  "name": "wopr-plugin-imessage",
+  "version": "1.0.0",
+  "description": "iMessage/SMS integration for WOPR via imsg CLI (macOS only)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "wopr",
+    "plugin",
+    "imessage",
+    "sms",
+    "macos"
+  ],
+  "author": "TSavo",
+  "license": "MIT",
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "wopr": ">=0.0.1"
+  }
+}
