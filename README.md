@@ -1,6 +1,12 @@
 # WOPR iMessage Plugin
 
-iMessage/SMS integration for WOPR on macOS using the `imsg` CLI tool.
+[![npm version](https://img.shields.io/npm/v/wopr-plugin-imessage.svg)](https://www.npmjs.com/package/wopr-plugin-imessage)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![WOPR](https://img.shields.io/badge/WOPR-Plugin-blue)](https://github.com/TSavo/wopr)
+
+iMessage/SMS integration for [WOPR](https://github.com/TSavo/wopr) on macOS using the `imsg` CLI tool.
+
+> Part of the [WOPR](https://github.com/TSavo/wopr) ecosystem - Self-sovereign AI session management over P2P.
 
 ## ⚠️ macOS Only
 
