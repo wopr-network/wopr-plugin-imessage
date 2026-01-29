@@ -1,0 +1,9 @@
+{
+  "//": "iMessage plugin configuration - macOS ONLY",
+  "imsgPath": "/usr/local/bin/imsg",
+  "account": "your-apple-id@icloud.com",
+  "autoStart": true,
+  "dmPolicy": "allowlist",
+  "allowFrom": ["+1234567890"],
+  "session": "imessage"
+}
