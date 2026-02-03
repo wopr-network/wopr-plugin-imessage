@@ -1,9 +1,17 @@
 {
-  "//": "iMessage plugin configuration - macOS ONLY",
-  "imsgPath": "/usr/local/bin/imsg",
-  "account": "your-apple-id@icloud.com",
-  "autoStart": true,
-  "dmPolicy": "allowlist",
-  "allowFrom": ["+1234567890"],
-  "session": "imessage"
+  "channels": {
+    "imessage": {
+      "enabled": true,
+      "cliPath": "/usr/local/bin/imsg",
+      "service": "auto",
+      "region": "US",
+      "dmPolicy": "allowlist",
+      "allowFrom": ["+1234567890", "user@example.com"],
+      "groupPolicy": "allowlist",
+      "groupAllowFrom": [],
+      "includeAttachments": false,
+      "mediaMaxMb": 16,
+      "textChunkLimit": 4000
+    }
+  }
 }

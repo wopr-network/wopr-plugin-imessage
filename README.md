@@ -123,25 +123,27 @@ For a separate iMessage identity from your personal account:
 
 ## Remote Mac via SSH
 
-If WOPR runs on Linux but iMessage needs to be on a Mac:
+If WOPR runs on Linux but iMessage needs to be on a Mac, use an SSH wrapper script:
 
-```json
-{
-  "channels": {
-    "imessage": {
-      "enabled": true,
-      "cliPath": "/path/to/imsg-ssh-wrapper",
-      "remoteHost": "user@mac-host"
-    }
-  }
-}
-```
+1. Create a wrapper script on your Linux host:
+   ```bash
+   #!/bin/bash
+   exec ssh -T user@mac-host /usr/local/bin/imsg "$@"
+   ```
 
-SSH wrapper script:
-```bash
-#!/bin/bash
-exec ssh -T user@mac-host /usr/local/bin/imsg "$@"
-```
+2. Make it executable and point your config to it:
+   ```json
+   {
+     "channels": {
+       "imessage": {
+         "enabled": true,
+         "cliPath": "/path/to/imsg-ssh-wrapper"
+       }
+     }
+   }
+   ```
+
+3. Ensure SSH key authentication is set up (no password prompts)
 
 ## Commands
 
@@ -169,7 +171,9 @@ imsg send --to "+15555550123" "Hello from WOPR"
 ### Messages not received
 - Check `imsg chats` works manually
 - Verify DM/group policies in config
-- Check WOPR logs: `~/.wopr/logs/imessage-plugin.log`
+- Check WOPR logs (location depends on `WOPR_HOME` environment variable):
+  - Error log: `$WOPR_HOME/logs/imessage-plugin-error.log`
+  - Debug log: `$WOPR_HOME/logs/imessage-plugin.log`
 
 ### Automation permission denied
 - System Settings → Privacy & Security → Automation
@@ -182,6 +186,48 @@ npm install
 npm run build
 npm run watch
 ```
+
+### Architecture
+
+The plugin communicates with the `imsg` CLI tool via JSON-RPC over stdio:
+
+1. Plugin spawns `imsg rpc` as a child process
+2. Sends JSON-RPC requests via stdin
+3. Receives responses and notifications via stdout
+4. Incoming messages arrive as JSON-RPC notifications (`message` or `message.received`)
+
+### Available RPC Methods
+
+The `IMessageClient` class exposes these methods:
+
+| Method | Description | Timeout |
+|--------|-------------|---------|
+| `sendMessage(params)` | Send a message | 60s |
+| `listChats(limit)` | List recent chats | 10s |
+| `getChatHistory(chatId, limit)` | Get chat message history | 10s |
+
+### Configuration Schema
+
+The plugin registers a config schema for WOPR's WebUI. All fields have sensible defaults:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `true` | Enable/disable plugin |
+| `cliPath` | string | `"imsg"` | Path to imsg executable |
+| `dbPath` | string | auto | Messages database path |
+| `service` | string | `"auto"` | `auto`, `imessage`, or `sms` |
+| `region` | string | `"US"` | SMS region code |
+| `dmPolicy` | string | `"pairing"` | DM handling policy |
+| `groupPolicy` | string | `"allowlist"` | Group handling policy |
+| `includeAttachments` | boolean | `false` | Include media attachments |
+| `mediaMaxMb` | number | `16` | Max attachment size in MB |
+| `textChunkLimit` | number | `4000` | Max chars per message chunk |
+
+### Session Keys
+
+Sessions are keyed based on message context:
+- DMs: `imessage-dm-{sender}`
+- Groups: `imessage-group-{chat_id}`
 
 ## License
 
