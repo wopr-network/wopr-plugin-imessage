@@ -12,14 +12,19 @@
 
 import { IMessageClient } from "./imsg-client.js";
 import { logger } from "./logger.js";
-import type { 
-  WOPRPlugin, 
-  WOPRPluginContext, 
-  ConfigSchema, 
-  StreamMessage, 
+import {
+  createPairingRequest,
+  buildPairingMessage,
+  cleanupExpiredPairings,
+} from "./pairing.js";
+import type {
+  WOPRPlugin,
+  WOPRPluginContext,
+  ConfigSchema,
+  StreamMessage,
   IMessageConfig,
   IncomingMessage,
-  AgentIdentity 
+  AgentIdentity
 } from "./types.js";
 
 let client: IMessageClient | null = null;
@@ -27,6 +32,7 @@ let ctx: WOPRPluginContext | null = null;
 let agentIdentity: AgentIdentity = { name: "WOPR", emoji: "👀" };
 let messageQueue: Array<{ msg: IncomingMessage; receivedAt: number }> = [];
 let processingInterval: NodeJS.Timeout | null = null;
+let cleanupInterval: NodeJS.Timeout | null = null;
 
 // Config schema for WebUI
 const configSchema: ConfigSchema = {
@@ -157,7 +163,7 @@ function buildSessionKey(msg: IncomingMessage): string {
 /**
  * Determine if we should respond to this message
  */
-function shouldRespond(msg: IncomingMessage, config: IMessageConfig): boolean {
+function shouldRespond(msg: IncomingMessage, config: IMessageConfig): boolean | "pairing" {
   // Skip messages without text
   if (!msg.text?.trim()) {
     return false;
@@ -178,10 +184,12 @@ function shouldRespond(msg: IncomingMessage, config: IMessageConfig): boolean {
     if (sender && allowFrom.includes(sender)) return true;
     if (sender && allowFrom.some(a => sender.includes(a))) return true;
     
-    // TODO: Implement pairing code flow
-    // For now, log and skip
-    logger.info({ 
-      msg: "Unapproved iMessage DM received", 
+    // Pairing mode: return "pairing" to signal the caller
+    if (policy === "pairing") return "pairing";
+
+    // Allowlist mode but not on list
+    logger.info({
+      msg: "Unapproved iMessage DM received (allowlist mode)",
       sender,
       text: msg.text?.substring(0, 100)
     });
@@ -220,7 +228,21 @@ async function handleIncomingMessage(msg: IncomingMessage, config: IMessageConfi
   const sessionKey = buildSessionKey(msg);
   
   // Check if we should respond
-  if (!shouldRespond(msg, config)) {
+  const respondResult = shouldRespond(msg, config);
+
+  if (respondResult === "pairing") {
+    // Generate pairing code and send it back
+    const sender = msg.sender || msg.handle || "";
+    if (sender) {
+      const code = createPairingRequest(sender);
+      const pairingMsg = buildPairingMessage(code);
+      logger.debug({ msg: "Pairing code generated for iMessage contact", sender });
+      await sendResponse(msg, pairingMsg, config);
+    }
+    return;
+  }
+
+  if (!respondResult) {
     // Still log to session for context
     try {
       ctx.logMessage(sessionKey, msg.text, {
@@ -390,7 +412,11 @@ const plugin: WOPRPlugin = {
       client = new IMessageClient({
         cliPath: config.cliPath,
         dbPath: config.dbPath,
-        onMessage: (msg) => handleIncomingMessage(msg, config),
+        onMessage: (msg) => {
+          // Re-read config each time so that allowlist changes (e.g. from claimPairingCode) are picked up
+          const freshConfig: IMessageConfig = ctx!.getConfig<{ channels?: { imessage?: IMessageConfig } }>()?.channels?.imessage || {};
+          handleIncomingMessage(msg, freshConfig);
+        },
         onError: (err) => logger.error({ msg: "iMessage client error", error: err.message }),
       });
       
@@ -398,11 +424,15 @@ const plugin: WOPRPlugin = {
       
       // Start message processing loop
       processingInterval = setInterval(() => {
-        processMessageQueue(config).catch(err => {
+        const freshQueueConfig: IMessageConfig = ctx!.getConfig<{ channels?: { imessage?: IMessageConfig } }>()?.channels?.imessage || {};
+        processMessageQueue(freshQueueConfig).catch(err => {
           logger.error({ msg: "Message queue processing error", error: err.message });
         });
       }, 100);
       
+      // Clean up expired pairings every minute
+      cleanupInterval = setInterval(cleanupExpiredPairings, 60 * 1000);
+
       logger.info("iMessage plugin initialized successfully");
       
       // Log helpful info
@@ -420,6 +450,11 @@ const plugin: WOPRPlugin = {
   },
   
   async shutdown() {
+    if (cleanupInterval) {
+      clearInterval(cleanupInterval);
+      cleanupInterval = null;
+    }
+
     if (processingInterval) {
       clearInterval(processingInterval);
       processingInterval = null;
@@ -435,3 +470,12 @@ const plugin: WOPRPlugin = {
 };
 
 export default plugin;
+
+// Re-export pairing API for CLI commands (wopr imessage approve <code>)
+export {
+  claimPairingCode,
+  listPairingRequests,
+  getPairingRequest,
+  createPairingRequest,
+  buildPairingMessage,
+} from "./pairing.js";
