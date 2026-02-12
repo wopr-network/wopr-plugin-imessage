@@ -14,11 +14,8 @@ import { IMessageClient } from "./imsg-client.js";
 import { logger } from "./logger.js";
 import {
   createPairingRequest,
-  claimPairingCode,
   buildPairingMessage,
   cleanupExpiredPairings,
-  listPairingRequests,
-  getPairingRequest,
 } from "./pairing.js";
 import type {
   WOPRPlugin,
@@ -239,7 +236,7 @@ async function handleIncomingMessage(msg: IncomingMessage, config: IMessageConfi
     if (sender) {
       const code = createPairingRequest(sender);
       const pairingMsg = buildPairingMessage(code);
-      logger.info({ msg: "Pairing code generated for iMessage contact", sender, code });
+      logger.debug({ msg: "Pairing code generated for iMessage contact", sender });
       await sendResponse(msg, pairingMsg, config);
     }
     return;
@@ -415,7 +412,11 @@ const plugin: WOPRPlugin = {
       client = new IMessageClient({
         cliPath: config.cliPath,
         dbPath: config.dbPath,
-        onMessage: (msg) => handleIncomingMessage(msg, config),
+        onMessage: (msg) => {
+          // Re-read config each time so that allowlist changes (e.g. from claimPairingCode) are picked up
+          const freshConfig: IMessageConfig = ctx!.getConfig<{ channels?: { imessage?: IMessageConfig } }>()?.channels?.imessage || {};
+          handleIncomingMessage(msg, freshConfig);
+        },
         onError: (err) => logger.error({ msg: "iMessage client error", error: err.message }),
       });
       
@@ -423,7 +424,8 @@ const plugin: WOPRPlugin = {
       
       // Start message processing loop
       processingInterval = setInterval(() => {
-        processMessageQueue(config).catch(err => {
+        const freshQueueConfig: IMessageConfig = ctx!.getConfig<{ channels?: { imessage?: IMessageConfig } }>()?.channels?.imessage || {};
+        processMessageQueue(freshQueueConfig).catch(err => {
           logger.error({ msg: "Message queue processing error", error: err.message });
         });
       }, 100);
