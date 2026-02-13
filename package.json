@@ -28,7 +28,7 @@
     "linux"
   ],
   "peerDependencies": {
-    "wopr": ">=0.0.1"
+    "@wopr-network/wopr": ">=0.1.0"
   },
   "scripts": {
     "build": "tsc",
