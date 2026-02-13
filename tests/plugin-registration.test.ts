@@ -5,7 +5,7 @@
  * The init() call spawns a child process (imsg CLI) which won't exist in CI,
  * so we mock the logger and test the parts that don't require macOS.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 // Mock the logger before importing the plugin
 vi.mock("../src/logger.js", () => ({
@@ -35,6 +35,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 import plugin from "../src/index.js";
+import { logger } from "../src/logger.js";
 import { createMockContext } from "./mocks/wopr-context.js";
 
 describe("plugin registration", () => {
@@ -104,12 +105,14 @@ describe("plugin registration", () => {
     }
     Object.defineProperty(process, "platform", { value: originalPlatform });
 
-    // On non-macOS, the plugin should warn and not create a client
-    // The key assertion is that it doesn't throw
+    // On non-macOS, the plugin should warn about the platform
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("iMessage plugin requires macOS"),
+    );
   });
 
   it("shutdown is safe when not initialized", async () => {
     // Calling shutdown before init should not throw
-    await expect(plugin.shutdown!()).resolves.not.toThrow();
+    await expect(plugin.shutdown!()).resolves.toBeUndefined();
   });
 });

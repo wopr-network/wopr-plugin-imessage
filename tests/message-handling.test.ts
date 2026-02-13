@@ -1,63 +1,29 @@
 /**
  * Message handling unit tests for wopr-plugin-imessage.
  *
- * Tests the shouldRespond() and buildSessionKey() logic which are the core
- * message routing functions. Since these are module-private, we test them
- * indirectly through the exported plugin + mocks, or re-implement the logic
- * to validate expected behavior.
- *
- * For thorough unit testing, we extract the pure logic into testable assertions.
+ * Tests the shouldRespond() and buildSessionKey() production code exported
+ * from src/index.ts, ensuring routing logic regressions are caught.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { IMessageConfig, IncomingMessage } from "../src/types.js";
 
-// Since shouldRespond and buildSessionKey are not exported, we re-implement
-// the same logic here to verify correctness. This is the standard pattern
-// when testing module-private functions.
+// Mock logger to prevent side effects from shouldRespond's logger.info call
+vi.mock("../src/logger.js", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    verbose: vi.fn(),
+  },
+}));
 
-function buildSessionKey(msg: IncomingMessage): string {
-  if (msg.is_group) {
-    return `imessage-group-${msg.chat_id || msg.chat_guid || msg.chat_identifier || "unknown"}`;
-  }
-  return `imessage-dm-${msg.sender || msg.handle || "unknown"}`;
-}
+// Mock child_process to prevent actual imsg spawning during import
+vi.mock("node:child_process", () => ({
+  spawn: vi.fn(),
+}));
 
-function shouldRespond(
-  msg: IncomingMessage,
-  config: IMessageConfig,
-): boolean | "pairing" {
-  if (!msg.text?.trim()) {
-    return false;
-  }
-
-  const isGroup = msg.is_group === true;
-  const sender = msg.sender || msg.handle || "";
-
-  if (!isGroup) {
-    const policy = config.dmPolicy || "pairing";
-    if (policy === "closed") return false;
-    if (policy === "open") return true;
-
-    const allowFrom = config.allowFrom || [];
-    if (allowFrom.includes("*")) return true;
-    if (sender && allowFrom.includes(sender)) return true;
-    if (sender && allowFrom.some((a) => sender.includes(a))) return true;
-
-    if (policy === "pairing") return "pairing";
-
-    return false;
-  }
-
-  const groupPolicy = config.groupPolicy || "allowlist";
-  if (groupPolicy === "disabled") return false;
-  if (groupPolicy === "open") return true;
-
-  const groupAllowFrom = config.groupAllowFrom || [];
-  if (groupAllowFrom.includes("*")) return true;
-  if (sender && groupAllowFrom.includes(sender)) return true;
-
-  return false;
-}
+import { shouldRespond, buildSessionKey } from "../src/index.js";
 
 describe("buildSessionKey", () => {
   it("builds DM session key from sender", () => {

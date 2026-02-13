@@ -471,6 +471,9 @@ const plugin: WOPRPlugin = {
 
 export default plugin;
 
+// Export routing helpers for unit testing
+export { shouldRespond, buildSessionKey };
+
 // Re-export pairing API for CLI commands (wopr imessage approve <code>)
 export {
   claimPairingCode,
