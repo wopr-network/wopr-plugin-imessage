@@ -6,7 +6,7 @@ iMessage/SMS channel plugin for WOPR via the `imsg` CLI. **macOS only.**
 
 ```bash
 npm run build     # tsc
-npm run check     # biome check + tsc --noEmit (run before committing)
+npm run check     # biome check src/ && tsc --noEmit (run before committing)
 npm run lint:fix  # biome check --fix src/
 npm run format    # biome format --write src/
 npm test          # vitest run
@@ -29,7 +29,7 @@ src/
 - Communicates via `imsg` subprocess over stdio
 - **macOS only**: requires Messages.app + Accessibility permissions granted to the terminal/process
 - SMS bridging works only if the Mac is signed into an iCloud account with iMessage enabled
-- **Gotcha**: macOS privacy permissions must be granted manually in System Preferences → Privacy → Accessibility
+- **Gotcha**: macOS privacy permissions must be granted manually — Full Disk Access for WOPR and Automation permission for Messages.app
 
 ## Plugin Contract
 
