@@ -5,7 +5,7 @@
  * The init() call spawns a child process (imsg CLI) which won't exist in CI,
  * so we mock the logger and test the parts that don't require macOS.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Mock the logger before importing the plugin
 vi.mock("../src/logger.js", () => ({
@@ -114,5 +114,127 @@ describe("plugin registration", () => {
 	it("shutdown is safe when not initialized", async () => {
 		// Calling shutdown before init should not throw
 		await expect(plugin.shutdown!()).resolves.toBeUndefined();
+	});
+});
+
+describe("plugin manifest", () => {
+	it("has a complete manifest", () => {
+		expect(plugin.manifest).toBeDefined();
+		expect(plugin.manifest!.name).toBe("@wopr-network/wopr-plugin-imessage");
+		expect(plugin.manifest!.version).toBe("1.0.0");
+		expect(plugin.manifest!.capabilities).toContain("channel");
+		expect(plugin.manifest!.capabilities).toContain("imessage");
+		expect(plugin.manifest!.category).toBe("channel");
+		expect(plugin.manifest!.tags).toEqual(
+			expect.arrayContaining(["imessage", "sms", "macos", "channel"]),
+		);
+		expect(plugin.manifest!.icon).toBeDefined();
+		expect(plugin.manifest!.requires).toBeDefined();
+		expect(plugin.manifest!.requires!.os).toEqual(["darwin"]);
+		expect(plugin.manifest!.requires!.bins).toEqual(["imsg"]);
+		expect(plugin.manifest!.lifecycle).toBeDefined();
+		expect(plugin.manifest!.lifecycle!.shutdownBehavior).toBe("graceful");
+		expect(plugin.manifest!.configSchema).toBeDefined();
+	});
+});
+
+describe("plugin shutdown cleanup", () => {
+	afterEach(async () => {
+		try {
+			await plugin.shutdown!();
+		} catch {
+			// ignore
+		}
+	});
+
+	it("shutdown unregisters config schema and nulls ctx", async () => {
+		const ctx = createMockContext();
+
+		const originalPlatform = process.platform;
+		Object.defineProperty(process, "platform", { value: "linux" });
+		try {
+			await plugin.init!(ctx);
+		} catch {
+			// Expected on non-darwin
+		}
+		Object.defineProperty(process, "platform", { value: originalPlatform });
+
+		await plugin.shutdown!();
+
+		expect(ctx.unregisterConfigSchema).toHaveBeenCalledWith(
+			"wopr-plugin-imessage",
+		);
+	});
+});
+
+describe("plugin config schema setupFlow", () => {
+	it("config schema fields have setupFlow where appropriate", async () => {
+		const ctx = createMockContext();
+		try {
+			await plugin.init!(ctx);
+		} catch {
+			// Expected
+		}
+		await plugin.shutdown!();
+
+		const call = (ctx.registerConfigSchema as any).mock.calls[0];
+		const schema = call[1];
+
+		const cliPathField = schema.fields.find((f: any) => f.name === "cliPath");
+		expect(cliPathField.setupFlow).toBe("paste");
+
+		const dbPathField = schema.fields.find((f: any) => f.name === "dbPath");
+		expect(dbPathField.setupFlow).toBe("paste");
+
+		const enabledField = schema.fields.find((f: any) => f.name === "enabled");
+		expect(enabledField.setupFlow).toBe("none");
+
+		const serviceField = schema.fields.find((f: any) => f.name === "service");
+		expect(serviceField.setupFlow).toBe("none");
+	});
+});
+
+describe("plugin A2A tools", () => {
+	afterEach(async () => {
+		try {
+			await plugin.shutdown!();
+		} catch {
+			// ignore
+		}
+	});
+
+	it("registers A2A server when ctx.registerA2AServer exists", async () => {
+		const ctx = createMockContext();
+		ctx.registerA2AServer = vi.fn();
+
+		const originalPlatform = process.platform;
+		Object.defineProperty(process, "platform", { value: "linux" });
+		try {
+			await plugin.init!(ctx);
+		} catch {
+			// Expected on non-darwin
+		}
+		Object.defineProperty(process, "platform", { value: originalPlatform });
+
+		expect(ctx.registerA2AServer).toHaveBeenCalledWith(
+			expect.objectContaining({
+				name: "wopr-plugin-imessage",
+				tools: expect.arrayContaining([
+					expect.objectContaining({ name: "imessage_list_pairings" }),
+					expect.objectContaining({ name: "imessage_approve_pairing" }),
+				]),
+			}),
+		);
+	});
+
+	it("skips A2A registration when ctx.registerA2AServer is undefined", async () => {
+		const ctx = createMockContext();
+		delete (ctx as any).registerA2AServer;
+
+		const originalPlatform = process.platform;
+		Object.defineProperty(process, "platform", { value: "linux" });
+		// Should not throw
+		await expect(plugin.init!(ctx)).resolves.toBeUndefined();
+		Object.defineProperty(process, "platform", { value: originalPlatform });
 	});
 });
