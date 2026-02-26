@@ -523,7 +523,18 @@ const plugin: WOPRPlugin = {
 									isError: true,
 								};
 							}
-							const result = await claimPairingCode(code, ctx!);
+							if (!ctx) {
+								return {
+									content: [
+										{
+											type: "text" as const,
+											text: "Error: plugin is shutting down",
+										},
+									],
+									isError: true,
+								};
+							}
+							const result = await claimPairingCode(code, ctx);
 							if (result.error) {
 								return {
 									content: [
