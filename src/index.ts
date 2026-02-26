@@ -477,7 +477,7 @@ const plugin: WOPRPlugin = {
 				version: "1.0.0",
 				tools: [
 					{
-						name: "imessage_list_pairings",
+						name: "imessage.listPairings",
 						description: "List pending iMessage pairing requests",
 						inputSchema: {},
 						handler: async () => {
@@ -501,7 +501,7 @@ const plugin: WOPRPlugin = {
 						},
 					},
 					{
-						name: "imessage_approve_pairing",
+						name: "imessage.approvePairing",
 						description: "Approve a pending iMessage pairing code",
 						inputSchema: {
 							type: "object",
@@ -520,7 +520,6 @@ const plugin: WOPRPlugin = {
 									content: [
 										{ type: "text" as const, text: "Error: code is required" },
 									],
-									isError: true,
 								};
 							}
 							if (!ctx) {
@@ -531,7 +530,6 @@ const plugin: WOPRPlugin = {
 											text: "Error: plugin is shutting down",
 										},
 									],
-									isError: true,
 								};
 							}
 							const result = await claimPairingCode(code, ctx);
@@ -540,7 +538,6 @@ const plugin: WOPRPlugin = {
 									content: [
 										{ type: "text" as const, text: `Error: ${result.error}` },
 									],
-									isError: true,
 								};
 							}
 							return {
