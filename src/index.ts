@@ -479,7 +479,7 @@ const plugin: WOPRPlugin = {
 					{
 						name: "imessage.listPairings",
 						description: "List pending iMessage pairing requests",
-						inputSchema: {},
+						inputSchema: { type: "object", additionalProperties: false },
 						handler: async () => {
 							const pairings = listPairingRequests();
 							return {

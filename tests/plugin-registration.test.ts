@@ -220,8 +220,8 @@ describe("plugin A2A tools", () => {
 			expect.objectContaining({
 				name: "wopr-plugin-imessage",
 				tools: expect.arrayContaining([
-					expect.objectContaining({ name: "imessage_list_pairings" }),
-					expect.objectContaining({ name: "imessage_approve_pairing" }),
+					expect.objectContaining({ name: "imessage.listPairings" }),
+					expect.objectContaining({ name: "imessage.approvePairing" }),
 				]),
 			}),
 		);
