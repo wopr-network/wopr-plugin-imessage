@@ -14,14 +14,17 @@ import { IMessageClient } from "./imsg-client.js";
 import { logger } from "./logger.js";
 import {
 	buildPairingMessage,
+	claimPairingCode,
 	cleanupExpiredPairings,
 	createPairingRequest,
+	listPairingRequests,
 } from "./pairing.js";
 import type {
 	AgentIdentity,
 	ConfigSchema,
 	IMessageConfig,
 	IncomingMessage,
+	PluginManifest,
 	StreamMessage,
 	WOPRPlugin,
 	WOPRPluginContext,
@@ -45,6 +48,7 @@ const configSchema: ConfigSchema = {
 			type: "checkbox",
 			label: "Enabled",
 			default: true,
+			setupFlow: "none",
 		},
 		{
 			name: "cliPath",
@@ -54,6 +58,7 @@ const configSchema: ConfigSchema = {
 			default: "imsg",
 			description:
 				"Path to imsg executable (install: brew install steipete/tap/imsg)",
+			setupFlow: "paste",
 		},
 		{
 			name: "dbPath",
@@ -61,6 +66,7 @@ const configSchema: ConfigSchema = {
 			label: "Messages DB Path",
 			placeholder: "/Users/<you>/Library/Messages/chat.db",
 			description: "Path to Messages database (usually auto-detected)",
+			setupFlow: "paste",
 		},
 		{
 			name: "service",
@@ -73,6 +79,7 @@ const configSchema: ConfigSchema = {
 			],
 			default: "auto",
 			description: "Which service to use for sending",
+			setupFlow: "none",
 		},
 		{
 			name: "region",
@@ -81,6 +88,7 @@ const configSchema: ConfigSchema = {
 			placeholder: "US",
 			default: "US",
 			description: "Region code for SMS formatting",
+			setupFlow: "none",
 		},
 		{
 			name: "dmPolicy",
@@ -94,6 +102,7 @@ const configSchema: ConfigSchema = {
 			],
 			default: "pairing",
 			description: "How to handle direct messages from unknown contacts",
+			setupFlow: "none",
 		},
 		{
 			name: "groupPolicy",
@@ -106,6 +115,7 @@ const configSchema: ConfigSchema = {
 			],
 			default: "allowlist",
 			description: "How to handle group messages",
+			setupFlow: "none",
 		},
 		{
 			name: "includeAttachments",
@@ -114,6 +124,7 @@ const configSchema: ConfigSchema = {
 			default: false,
 			description:
 				"Include image/file attachments in context (requires Full Disk Access)",
+			setupFlow: "none",
 		},
 		{
 			name: "mediaMaxMb",
@@ -122,6 +133,7 @@ const configSchema: ConfigSchema = {
 			placeholder: "16",
 			default: 16,
 			description: "Maximum attachment size in MB",
+			setupFlow: "none",
 		},
 		{
 			name: "textChunkLimit",
@@ -130,6 +142,47 @@ const configSchema: ConfigSchema = {
 			placeholder: "4000",
 			default: 4000,
 			description: "Maximum characters per message (iMessage limit is high)",
+			setupFlow: "none",
+		},
+	],
+};
+
+const manifest: PluginManifest = {
+	name: "@wopr-network/wopr-plugin-imessage",
+	version: "1.0.0",
+	description: "iMessage/SMS integration for macOS via imsg CLI",
+	author: "TSavo",
+	license: "MIT",
+	capabilities: ["channel", "imessage", "sms"],
+	category: "channel",
+	tags: ["imessage", "sms", "macos", "channel", "messaging"],
+	icon: "💬",
+	requires: {
+		bins: ["imsg"],
+		os: ["darwin"],
+		config: ["channels.imessage"],
+	},
+	provides: {
+		capabilities: [
+			{
+				type: "channel",
+				id: "imessage",
+				displayName: "iMessage / SMS",
+				tier: "byok",
+			},
+		],
+	},
+	configSchema,
+	lifecycle: {
+		shutdownBehavior: "graceful",
+		shutdownTimeoutMs: 5000,
+	},
+	install: [
+		{
+			kind: "brew",
+			formula: "steipete/tap/imsg",
+			bins: ["imsg"],
+			label: "imsg CLI (macOS only)",
 		},
 	],
 };
@@ -261,7 +314,7 @@ async function handleIncomingMessage(
 				from: msg.sender || msg.handle || "unknown",
 				channel: { type: "imessage", id: String(msg.chat_id || "dm") },
 			});
-		} catch (e) {}
+		} catch (_e: unknown) {}
 		return;
 	}
 
@@ -291,8 +344,9 @@ async function processMessageQueue(config: IMessageConfig) {
 
 		// Send response back via iMessage
 		await sendResponse(msg, response, config);
-	} catch (error: any) {
-		logger.error({ msg: "Failed to process iMessage", error: error.message });
+	} catch (error: unknown) {
+		const msg1 = error instanceof Error ? error.message : String(error);
+		logger.error({ msg: "Failed to process iMessage", error: msg1 });
 
 		// Try to send error response
 		try {
@@ -301,7 +355,7 @@ async function processMessageQueue(config: IMessageConfig) {
 				"Sorry, I couldn't process that message. Please try again.",
 				config,
 			);
-		} catch (e) {}
+		} catch (_e: unknown) {}
 	}
 }
 
@@ -389,10 +443,11 @@ async function sendResponse(
 			if (!isLast) {
 				await new Promise((r) => setTimeout(r, 500));
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
+			const errMsg = error instanceof Error ? error.message : String(error);
 			logger.error({
 				msg: "Failed to send iMessage response",
-				error: error.message,
+				error: errMsg,
 			});
 		}
 	}
@@ -409,10 +464,95 @@ const plugin: WOPRPlugin = {
 	name: "wopr-plugin-imessage",
 	version: "1.0.0",
 	description: "iMessage/SMS integration for macOS via imsg CLI",
+	manifest,
 
 	async init(context: WOPRPluginContext) {
 		ctx = context;
 		ctx.registerConfigSchema("wopr-plugin-imessage", configSchema);
+
+		// Register A2A tools (guarded — registerA2AServer is optional)
+		if (ctx.registerA2AServer) {
+			ctx.registerA2AServer({
+				name: "wopr-plugin-imessage",
+				version: "1.0.0",
+				tools: [
+					{
+						name: "imessage.listPairings",
+						description: "List pending iMessage pairing requests",
+						inputSchema: { type: "object", additionalProperties: false },
+						handler: async () => {
+							const pairings = listPairingRequests();
+							return {
+								content: [
+									{
+										type: "text" as const,
+										text:
+											pairings.length === 0
+												? "No pending pairing requests."
+												: pairings
+														.map(
+															(p) =>
+																`Code: ${p.code} | Handle: ${p.handle} | Created: ${new Date(p.createdAt).toISOString()}`,
+														)
+														.join("\n"),
+									},
+								],
+							};
+						},
+					},
+					{
+						name: "imessage.approvePairing",
+						description: "Approve a pending iMessage pairing code",
+						inputSchema: {
+							type: "object",
+							properties: {
+								code: {
+									type: "string",
+									description: "The pairing code to approve",
+								},
+							},
+							required: ["code"],
+						},
+						handler: async (args: Record<string, unknown>) => {
+							const code = String(args.code || "");
+							if (!code) {
+								return {
+									content: [
+										{ type: "text" as const, text: "Error: code is required" },
+									],
+								};
+							}
+							if (!ctx) {
+								return {
+									content: [
+										{
+											type: "text" as const,
+											text: "Error: plugin is shutting down",
+										},
+									],
+								};
+							}
+							const result = await claimPairingCode(code, ctx);
+							if (result.error) {
+								return {
+									content: [
+										{ type: "text" as const, text: `Error: ${result.error}` },
+									],
+								};
+							}
+							return {
+								content: [
+									{
+										type: "text" as const,
+										text: `Approved pairing for handle: ${result.handle}`,
+									},
+								],
+							};
+						},
+					},
+				],
+			});
+		}
 
 		// Check platform
 		if (!isMacOS()) {
@@ -479,10 +619,11 @@ const plugin: WOPRPlugin = {
 				groupPolicy: config.groupPolicy || "allowlist",
 				service: config.service || "auto",
 			});
-		} catch (error: any) {
+		} catch (error: unknown) {
+			const initMsg = error instanceof Error ? error.message : String(error);
 			logger.error({
 				msg: "Failed to initialize iMessage client",
-				error: error.message,
+				error: initMsg,
 			});
 			throw error;
 		}
@@ -504,6 +645,11 @@ const plugin: WOPRPlugin = {
 			client = null;
 		}
 
+		if (ctx) {
+			ctx.unregisterConfigSchema("wopr-plugin-imessage");
+		}
+
+		ctx = null;
 		logger.info("iMessage plugin stopped");
 	},
 };

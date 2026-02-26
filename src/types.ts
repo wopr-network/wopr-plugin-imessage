@@ -13,6 +13,7 @@ export type {
 	ConfigSchema,
 	PluginInjectOptions,
 	PluginLogger,
+	PluginManifest,
 	StreamMessage,
 	UserProfile,
 	WOPRPlugin,
