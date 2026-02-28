@@ -277,8 +277,8 @@ async function processMessageQueue(config: IMessageConfig) {
 
     // Send response back via iMessage
     await sendResponse(msg, response, config);
-  } catch (error: any) {
-    logger.error({ msg: "Failed to process iMessage", error: error.message });
+  } catch (error: unknown) {
+    logger.error({ msg: "Failed to process iMessage", error: error instanceof Error ? error.message : String(error) });
 
     // Try to send error response
     try {
@@ -367,10 +367,10 @@ async function sendResponse(originalMsg: IncomingMessage, text: string, config: 
       if (!isLast) {
         await new Promise((r) => setTimeout(r, 500));
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error({
         msg: "Failed to send iMessage response",
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }
@@ -452,16 +452,20 @@ const plugin: WOPRPlugin = {
         groupPolicy: config.groupPolicy || "allowlist",
         service: config.service || "auto",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error({
         msg: "Failed to initialize iMessage client",
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
   },
 
   async shutdown() {
+    if (ctx) {
+      ctx.unregisterConfigSchema("wopr-plugin-imessage");
+    }
+
     if (cleanupInterval) {
       clearInterval(cleanupInterval);
       cleanupInterval = null;
